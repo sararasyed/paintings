@@ -1,0 +1,21 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /stickers/{stickerId} {
+
+      // Anyone can view all stickers.
+      allow read: if true;
+
+      // Only the authenticated author can add or remove stickers.
+      allow create, delete: if request.auth != null
+                             && request.auth.uid == "ycAw7YzyZCfe9iMnI2C7kCoFJGU2";
+
+      // Anyone (including signed-out visitors) can reposition a sticker,
+      // but the write may only touch position/rotation fields.
+      allow update: if request.resource.data.diff(resource.data).affectedKeys()
+                        .hasOnly(['x', 'y', 'rotation'])
+                    && request.resource.data.x is number
+                    && request.resource.data.y is number;
+    }
+  }
+}
