@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Sticker Wall</title>
+  <link rel="stylesheet" href="style.css?v=3" />
+</head>
+<body>
+  <div id="board">
+    <div id="canvas-wrapper">
+      <div id="canvas"></div>
+      <div id="timeline-bar">
+        <button id="play-btn" class="icon-btn" aria-label="Play placement order" disabled>▶</button>
+        <input id="timeline-slider" type="range" min="0" max="0" value="0" step="1" disabled />
+      </div>
+    </div>
+  </div>
+
+  <div id="unlock-panel" class="panel">
+    <input id="password-input" type="password" placeholder="Password" autocomplete="current-password" />
+    <button id="unlock-btn">Unlock</button>
+    <span id="unlock-error" class="error"></span>
+  </div>
+
+  <div id="upload-panel" class="panel hidden">
+    <label class="upload-btn">
+      Add sticker
+      <input id="file-input" type="file" accept="image/*" hidden />
+    </label>
+    <span class="hint">or paste an image (Cmd/Ctrl+V)</span>
+    <button id="lock-btn" title="Lock">Lock</button>
+  </div>
+
+  <script type="module" src="app.js?v=1"></script>
+</body>
+</html>
