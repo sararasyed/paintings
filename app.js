@@ -213,7 +213,7 @@ window.addEventListener("resize", () => {
 // Lists whatever image files currently exist in the repo's stickers/ folder,
 // via GitHub's public contents API — no manifest file to maintain by hand.
 async function fetchStickerFiles() {
-  const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/stickers`);
+  const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/stickers?ref=main`);
   if (!res.ok) return [];
   const entries = await res.json();
   return entries
