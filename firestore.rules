@@ -6,16 +6,24 @@ service cloud.firestore {
       // Anyone can view all stickers.
       allow read: if true;
 
-      // Only the authenticated author can add or remove stickers.
-      allow create, delete: if request.auth != null
-                             && request.auth.uid == "ycAw7YzyZCfe9iMnI2C7kCoFJGU2";
+      // Anyone can create a sticker record — but only the app does this,
+      // the first time it discovers a new image in the stickers/ folder,
+      // and only with this exact field shape.
+      allow create: if request.resource.data.keys().hasAll(['imageUrl', 'x', 'y', 'rotation', 'zIndex', 'createdAt'])
+                    && request.resource.data.imageUrl is string
+                    && request.resource.data.x is number
+                    && request.resource.data.y is number;
 
-      // Anyone (including signed-out visitors) can reposition a sticker,
-      // but the write may only touch position/rotation fields.
+      // Anyone can reposition a sticker, but the write may only touch
+      // position/rotation fields.
       allow update: if request.resource.data.diff(resource.data).affectedKeys()
                         .hasOnly(['x', 'y', 'rotation'])
                     && request.resource.data.x is number
                     && request.resource.data.y is number;
+
+      // Stickers are removed by deleting the image file from the repo, not
+      // through the app.
+      allow delete: if false;
     }
   }
 }

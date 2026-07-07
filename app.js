@@ -1,85 +1,27 @@
-import { firebaseConfig, AUTHOR_EMAIL } from "./firebase-config.js";
+import { firebaseConfig, GITHUB_REPO } from "./firebase-config.js";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-app.js";
 import {
-  getAuth,
-  signInWithEmailAndPassword,
-  signOut,
-  onAuthStateChanged,
-} from "https://www.gstatic.com/firebasejs/12.15.0/firebase-auth.js";
-import {
   getFirestore,
-  collection,
-  addDoc,
-  getDocs,
-  updateDoc,
-  deleteDoc,
   doc,
+  getDoc,
+  setDoc,
+  updateDoc,
   serverTimestamp,
 } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js";
-import {
-  getStorage,
-  ref,
-  uploadBytes,
-  getDownloadURL,
-  deleteObject,
-} from "https://www.gstatic.com/firebasejs/12.15.0/firebase-storage.js";
 
 const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
 const db = getFirestore(app);
-const storage = getStorage(app);
 
 const canvas = document.getElementById("canvas");
-const unlockPanel = document.getElementById("unlock-panel");
-const uploadPanel = document.getElementById("upload-panel");
-const passwordInput = document.getElementById("password-input");
-const unlockBtn = document.getElementById("unlock-btn");
-const unlockError = document.getElementById("unlock-error");
-const lockBtn = document.getElementById("lock-btn");
-const fileInput = document.getElementById("file-input");
 const playBtn = document.getElementById("play-btn");
 const timelineSlider = document.getElementById("timeline-slider");
 
 const STICKER_FRACTION = 0.16; // sticker width/height as a fraction of the canvas box's width
+const IMAGE_EXTENSIONS = /\.(png|jpe?g|gif|webp|svg)$/i;
 
-// id -> { el, sticker } — kept in memory so window resize can re-lay-out
+// filename -> { el, sticker } — kept in memory so window resize can re-lay-out
 // every sticker from its normalized (0-1) position without re-reading Firestore.
 const registry = new Map();
-
-onAuthStateChanged(auth, (user) => {
-  const isAuthor = !!user;
-  unlockPanel.classList.toggle("hidden", isAuthor);
-  uploadPanel.classList.toggle("hidden", !isAuthor);
-  document.body.classList.toggle("is-author", isAuthor);
-});
-
-unlockBtn.addEventListener("click", async () => {
-  unlockError.textContent = "";
-  try {
-    await signInWithEmailAndPassword(auth, AUTHOR_EMAIL, passwordInput.value);
-    passwordInput.value = "";
-  } catch {
-    unlockError.textContent = "Incorrect password";
-  }
-});
-
-passwordInput.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") unlockBtn.click();
-});
-
-lockBtn.addEventListener("click", () => signOut(auth));
-
-fileInput.addEventListener("change", () => {
-  const file = fileInput.files[0];
-  if (file) handleImage(file);
-  fileInput.value = "";
-});
-
-document.addEventListener("paste", (e) => {
-  if (uploadPanel.classList.contains("hidden")) return;
-  const item = [...e.clipboardData.items].find((i) => i.type.startsWith("image/"));
-  if (item) handleImage(item.getAsFile());
-});
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
@@ -107,59 +49,10 @@ function randomNormalizedPosition() {
   };
 }
 
-async function handleImage(file) {
-  const storageRef = ref(storage, `stickers/${crypto.randomUUID()}.png`);
-  await uploadBytes(storageRef, file);
-  const imageUrl = await getDownloadURL(storageRef);
-  const { x, y } = randomNormalizedPosition();
-  const rotation = Math.random() * 16 - 8;
-  const zIndex = Date.now();
-  const docRef = await addDoc(collection(db, "stickers"), {
-    imageUrl,
-    x,
-    y,
-    rotation,
-    zIndex,
-    createdAt: serverTimestamp(),
-    createdBy: auth.currentUser.uid,
-  });
-  renderSticker(docRef.id, { imageUrl, x, y, rotation, zIndex });
-  refreshTimeline();
-}
-
-async function deleteSticker(id, sticker) {
-  const entry = registry.get(id);
-  if (entry) {
-    entry.el.remove();
-    registry.delete(id);
-  }
-  await deleteDoc(doc(db, "stickers", id));
-  try {
-    await deleteObject(ref(storage, sticker.imageUrl));
-  } catch {
-    // storage object may already be gone; the Firestore record is the source of truth
-  }
-  refreshTimeline();
-}
-
-function selectSticker(id) {
-  registry.forEach(({ el }, stickerId) => {
-    el.classList.toggle("selected", stickerId === id);
-  });
-}
-
-function deselectAll() {
-  registry.forEach(({ el }) => el.classList.remove("selected"));
-}
-
-canvas.addEventListener("click", (e) => {
-  if (e.target === canvas) deselectAll();
-});
-
 // --- Timeline: play/scrub through the order stickers were placed in ---
 
 const PLAY_INTERVAL_MS = 600; // time to glide from one sticker to the next
-let placementOrder = []; // sticker ids, oldest first
+let placementOrder = []; // sticker filenames, oldest first
 let playbackFrame = null;
 
 function computeVisibility(value) {
@@ -219,9 +112,8 @@ timelineSlider.addEventListener("input", () => {
   computeVisibility(Number(timelineSlider.value));
 });
 
-// Recomputes placement order after a sticker is added/removed. If the
-// timeline was already showing "everything" (the live view), it stays live;
-// otherwise the current scrub position is left alone.
+// Recomputes placement order after stickers are (re)synced. If the timeline
+// was already showing "everything" (the live view), it stays live.
 function refreshTimeline() {
   const wasLive = Number(timelineSlider.value) >= placementOrder.length;
   placementOrder = [...registry.entries()]
@@ -253,10 +145,10 @@ function layoutSticker(el, sticker) {
   el.style.top = `${ny * canvas.clientHeight}px`;
 }
 
-function renderSticker(id, sticker) {
+function renderSticker(filename, sticker) {
   const el = document.createElement("div");
   el.className = "sticker";
-  el.dataset.id = id;
+  el.dataset.id = filename;
   el.dataset.rotation = sticker.rotation ?? 0;
   el.style.zIndex = sticker.zIndex;
   el.style.transform = `rotate(${sticker.rotation ?? 0}deg)`;
@@ -266,15 +158,7 @@ function renderSticker(id, sticker) {
   img.draggable = false;
   el.appendChild(img);
 
-  const deleteBtn = document.createElement("button");
-  deleteBtn.className = "sticker-delete";
-  deleteBtn.textContent = "×";
-  deleteBtn.setAttribute("aria-label", "Remove sticker");
-  deleteBtn.addEventListener("pointerdown", (e) => e.stopPropagation());
-  deleteBtn.addEventListener("click", () => deleteSticker(id, sticker));
-  el.appendChild(deleteBtn);
-
-  registry.set(id, { el, sticker });
+  registry.set(filename, { el, sticker });
   layoutSticker(el, sticker);
   makeDraggable(el, sticker);
   canvas.appendChild(el);
@@ -315,7 +199,6 @@ function makeDraggable(el, sticker) {
       sticker.x = nx;
       sticker.y = ny;
       updateDoc(doc(db, "stickers", el.dataset.id), { x: nx, y: ny });
-      selectSticker(el.dataset.id);
     }
 
     el.addEventListener("pointermove", onMove);
@@ -327,10 +210,49 @@ window.addEventListener("resize", () => {
   registry.forEach(({ el, sticker }) => layoutSticker(el, sticker));
 });
 
-async function loadStickers() {
-  const snapshot = await getDocs(collection(db, "stickers"));
-  snapshot.forEach((docSnap) => renderSticker(docSnap.id, docSnap.data()));
+// Lists whatever image files currently exist in the repo's stickers/ folder,
+// via GitHub's public contents API — no manifest file to maintain by hand.
+async function fetchStickerFiles() {
+  const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/stickers`);
+  if (!res.ok) return [];
+  const entries = await res.json();
+  return entries
+    .filter((entry) => entry.type === "file" && IMAGE_EXTENSIONS.test(entry.name))
+    .map((entry) => ({ name: entry.name, url: entry.download_url }));
+}
+
+// For each image currently in the stickers/ folder: reuse its saved position
+// from Firestore, or if this is the first time it's been seen, give it a
+// random spot and create that record. Images removed from the folder are
+// simply not rendered (their old Firestore record is left as harmless debris).
+async function syncStickers() {
+  const files = await fetchStickerFiles();
+
+  for (const file of files) {
+    if (registry.has(file.name)) continue;
+
+    const ref = doc(db, "stickers", file.name);
+    const snap = await getDoc(ref);
+    let sticker;
+
+    if (snap.exists()) {
+      sticker = snap.data();
+    } else {
+      const { x, y } = randomNormalizedPosition();
+      sticker = {
+        imageUrl: file.url,
+        x,
+        y,
+        rotation: Math.random() * 16 - 8,
+        zIndex: Date.now(),
+      };
+      await setDoc(ref, { ...sticker, createdAt: serverTimestamp() });
+    }
+
+    renderSticker(file.name, { ...sticker, imageUrl: file.url });
+  }
+
   refreshTimeline();
 }
 
-loadStickers();
+syncStickers();
