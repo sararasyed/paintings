@@ -41,13 +41,13 @@ html, body {
   flex-direction: column;
   align-items: stretch;
   gap: 12px;
-  width: min(1100px, 94vw);
+  width: min(1800px, 96vw);
 }
 
 #canvas {
   position: relative;
   width: 100%;
-  height: min(620px, 62vh);
+  height: min(1000px, 82vh);
   background: #ffffff;
   border: 1px solid var(--geist-border);
   border-radius: 8px;
@@ -62,7 +62,7 @@ html, body {
   padding: 2px 4px;
 }
 
-#timeline-bar input[type="range"] {
+.range-slim {
   -webkit-appearance: none;
   appearance: none;
   flex: 1;
@@ -72,7 +72,7 @@ html, body {
   outline: none;
 }
 
-#timeline-bar input[type="range"]::-webkit-slider-thumb {
+.range-slim::-webkit-slider-thumb {
   -webkit-appearance: none;
   width: 11px;
   height: 11px;
@@ -82,11 +82,11 @@ html, body {
   transition: transform 0.1s ease;
 }
 
-#timeline-bar input[type="range"]::-webkit-slider-thumb:hover {
+.range-slim::-webkit-slider-thumb:hover {
   transform: scale(1.15);
 }
 
-#timeline-bar input[type="range"]::-moz-range-thumb {
+.range-slim::-moz-range-thumb {
   width: 11px;
   height: 11px;
   border: none;
@@ -95,13 +95,13 @@ html, body {
   cursor: pointer;
 }
 
-#timeline-bar input[type="range"]::-moz-range-track {
+.range-slim::-moz-range-track {
   height: 2px;
   background: var(--geist-border);
   border-radius: 1px;
 }
 
-#timeline-bar input[type="range"]:disabled,
+.range-slim:disabled,
 .icon-btn:disabled {
   opacity: 0.35;
   cursor: default;
@@ -132,7 +132,16 @@ html, body {
   touch-action: none;
   user-select: none;
   cursor: grab;
-  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.18));
+  filter:
+    drop-shadow(1.5px 0 0 white)
+    drop-shadow(-1.5px 0 0 white)
+    drop-shadow(0 1.5px 0 white)
+    drop-shadow(0 -1.5px 0 white)
+    drop-shadow(1.5px 1.5px 0 white)
+    drop-shadow(-1.5px 1.5px 0 white)
+    drop-shadow(1.5px -1.5px 0 white)
+    drop-shadow(-1.5px -1.5px 0 white)
+    drop-shadow(0 2px 6px rgba(0, 0, 0, 0.18));
   opacity: 1;
   transition: opacity 0.4s ease;
 }
@@ -150,6 +159,7 @@ html, body {
   display: block;
   width: 100%;
   height: 100%;
+  object-fit: contain;
   pointer-events: none;
 }
 

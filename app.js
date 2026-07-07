@@ -16,7 +16,7 @@ const canvas = document.getElementById("canvas");
 const playBtn = document.getElementById("play-btn");
 const timelineSlider = document.getElementById("timeline-slider");
 
-const STICKER_FRACTION = 0.16; // sticker width/height as a fraction of the canvas box's width
+const STICKER_FRACTION = 0.27; // sticker's longer edge, as a fraction of the canvas box's shorter side
 const IMAGE_EXTENSIONS = /\.(png|jpe?g|gif|webp|svg)$/i;
 
 // filename -> { el, sticker } — kept in memory so window resize can re-lay-out
@@ -27,26 +27,48 @@ function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
 
-// Sticker size in px, derived from the canvas box's current width so it
-// rescales automatically whenever the window/canvas resizes.
-function stickerPixelSize() {
-  return canvas.clientWidth * STICKER_FRACTION;
+// Target size (in px) for a sticker's longer edge, derived from the canvas
+// box's shorter side so it rescales automatically on resize.
+function targetStickerSize() {
+  return Math.min(canvas.clientWidth, canvas.clientHeight) * STICKER_FRACTION;
 }
 
-function maxNormalized() {
-  const size = stickerPixelSize();
-  return {
-    maxNX: 1 - size / canvas.clientWidth,
-    maxNY: 1 - size / canvas.clientHeight,
-  };
-}
-
+// A rough (not exact) placement bound used only for picking a random spot
+// for brand-new stickers, before we know the image's real aspect ratio.
 function randomNormalizedPosition() {
-  const { maxNX, maxNY } = maxNormalized();
+  const size = targetStickerSize();
+  const maxNX = 1 - size / canvas.clientWidth;
+  const maxNY = 1 - size / canvas.clientHeight;
   return {
     x: Math.random() * Math.max(0, maxNX),
     y: Math.random() * Math.max(0, maxNY),
   };
+}
+
+// Sizes a sticker's box to match its image's real aspect ratio, scaled so
+// its overall footprint AREA matches a target — not just its longer edge.
+// Matching the longer edge alone shrinks tall narrow figures the most (a
+// full-body drawing ends up with far less visual area than a squarish
+// close-up); matching area instead means a standing figure and a close-up
+// of similar drawn detail read as similarly "big" on the board.
+function stickerDimensions(img) {
+  const naturalW = img.naturalWidth || 1;
+  const naturalH = img.naturalHeight || 1;
+  const target = targetStickerSize();
+  const scale = Math.sqrt((target * target) / (naturalW * naturalH));
+
+  let width = naturalW * scale;
+  let height = naturalH * scale;
+
+  // Safety clamp so an extreme aspect ratio can't balloon one edge absurdly.
+  const maxEdge = target * 1.75;
+  if (width > maxEdge || height > maxEdge) {
+    const shrink = maxEdge / Math.max(width, height);
+    width *= shrink;
+    height *= shrink;
+  }
+
+  return { width, height };
 }
 
 // --- Timeline: play/scrub through the order stickers were placed in ---
@@ -133,14 +155,18 @@ function refreshTimeline() {
 }
 
 // Applies a sticker's normalized x/y and current canvas size to its element's
-// actual pixel position/size. Called on render and again on every resize.
+// actual pixel position/size, sized to match its image's aspect ratio. Called
+// once the image has loaded (so natural dimensions are known), and again on
+// every resize.
 function layoutSticker(el, sticker) {
-  const size = stickerPixelSize();
-  const { maxNX, maxNY } = maxNormalized();
+  const img = el.querySelector("img");
+  const { width, height } = stickerDimensions(img);
+  const maxNX = 1 - width / canvas.clientWidth;
+  const maxNY = 1 - height / canvas.clientHeight;
   const nx = clamp(sticker.x, 0, Math.max(0, maxNX));
   const ny = clamp(sticker.y, 0, Math.max(0, maxNY));
-  el.style.width = `${size}px`;
-  el.style.height = `${size}px`;
+  el.style.width = `${width}px`;
+  el.style.height = `${height}px`;
   el.style.left = `${nx * canvas.clientWidth}px`;
   el.style.top = `${ny * canvas.clientHeight}px`;
 }
@@ -154,12 +180,12 @@ function renderSticker(filename, sticker) {
   el.style.transform = `rotate(${sticker.rotation ?? 0}deg)`;
 
   const img = document.createElement("img");
-  img.src = sticker.imageUrl;
   img.draggable = false;
+  img.onload = () => layoutSticker(el, sticker);
+  img.src = sticker.imageUrl;
   el.appendChild(img);
 
   registry.set(filename, { el, sticker });
-  layoutSticker(el, sticker);
   makeDraggable(el, sticker);
   canvas.appendChild(el);
 }
@@ -172,9 +198,8 @@ function makeDraggable(el, sticker) {
     const origLeft = el.offsetLeft;
     const origTop = el.offsetTop;
     const rotation = el.dataset.rotation;
-    const size = stickerPixelSize();
-    const maxLeft = canvas.clientWidth - size;
-    const maxTop = canvas.clientHeight - size;
+    const maxLeft = canvas.clientWidth - el.offsetWidth;
+    const maxTop = canvas.clientHeight - el.offsetHeight;
     el.style.zIndex = Date.now();
 
     function onMove(e) {
